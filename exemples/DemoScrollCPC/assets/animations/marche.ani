@@ -1,0 +1,4 @@
+; GX Studio - animation de sprite
+images perso1 perso2 perso3
+delai 6
+mode aller_retour

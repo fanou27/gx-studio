@@ -1,0 +1,33 @@
+; musique (GX Studio : editeur en grille)
+canal 0
+vitesse 40          ; 1 tic = vitesse + 1 lignes
+duree 48            ; tics par pas de la grille
+boucle
+volume A 13
+relache A 9
+volume B 12
+relache B 8
+volume C 11
+relache C 0
+bruit C 6
+A: C5!e . . . D5!e . . . E5!e . . . C5!e . . .
+A: C5!e . . . D5!e . . . E5!e . . . C5!e . . .
+A: E5!e . . . F5!e . . . G5!e . . . . . . -
+A: E5!e . . . F5!e . . . G5!e . . . . . . -
+A: G5!e . A5!e . G5!e . F5!e . E5!e . . . C5!e . . .
+A: G5!e . A5!e . G5!e . F5!e . E5!e . . . C5!e . . .
+A: C5!e . . . G4!e . . . C5!e . . . . . . -
+B: C3!e . . . C3!e . . . G2!e . . . G2!e . . .
+B: C3!e . . . C3!e . . . G2!e . . . G2!e . . .
+B: A2!e . . . A2!e . . . F2!e . . . F2!e . . .
+B: G2!e . . . G2!e . . . C3!e . . . C3!e . . .
+B: C3!e . . . C3!e . . . G2!e . . . G2!e . . .
+B: C3!e . . . C3!e . . . G2!e . . . G2!e . . .
+B: A2!e . . . A2!e . . . F2!e . . . F2!e . . .
+C: C4 - . . C4 - . . C4 - . . C4 - . .
+C: C4 - . . C4 - . . C4 - . . C4 - . .
+C: C4 - . . C4 - . . C4 - . . C4 - . .
+C: C4 - . . C4 - . . C4 - . . C4 - . .
+C: C4 - . . C4 - . . C4 - . . C4 - . .
+C: C4 - . . C4 - . . C4 - . . C4 - . .
+C: C4 - . . C4 - . . C4 - . . . . . .

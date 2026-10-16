@@ -1,0 +1,9 @@
+; rebond de la balle (raquette, murs) : canal 1, voie B
+canal 1
+vitesse 0          ; 1 tic = 1 ligne (312 lignes = 1 image)
+TONE B 120
+VOL B 13
+PAUSE 400
+VOL B 7
+PAUSE 300
+VOL B 0

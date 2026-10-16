@@ -1,0 +1,696 @@
+diff --git a/src/asic.cpp b/src/asic.cpp
+index e55644e..e1cca15 100644
+--- a/src/asic.cpp
++++ b/src/asic.cpp
+@@ -27,6 +27,8 @@ struct asic_color_t {
+ };
+ 
+ asic_color_t asic_colours[32];
++// GX Studio : encre ecrite par le Gate Array -> la couleur ASIC memorisee ne compte plus
++void asic_ga_ink_written(int pen) { if (pen >= 0 && pen < 32) asic_colours[pen].set = false; }
+ 
+ inline void asic_reset_dma_channel(int c) {
+   asic.dma.ch[c].source_address = 0;
+@@ -124,7 +126,7 @@ void asic_dma_cycle() {
+   //  The last 4 can be OR-ed to be combined
+ 
+   word dcsr_addr = 0x6C0F;
+-  byte dcsr = *(membank_write[dcsr_addr >> 14] + (dcsr_addr & 0x3fff));
++  byte dcsr = pbRegisterPage[(dcsr_addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */;
+   bool dcsr_changed = false;
+   for(int c = 0; c < NB_DMA_CHANNELS; c++) {
+     dma_channel &channel = asic.dma.ch[c];
+@@ -166,6 +168,7 @@ void asic_dma_cycle() {
+       if (opcode & 0x04) { // NOP, LOOP, INT, STOP
+         if(instruction & 0x0001) { // LOOP
+           if(channel.loops > 0) {
++            channel.loops--; // GX Studio : le compteur de REPEAT decremente (vraie console)
+             channel.source_address = channel.loop_address;
+             LOG_DEBUG("DMA [" << c << "] loop");
+           }
+@@ -177,6 +180,8 @@ void asic_dma_cycle() {
+         }
+         if(instruction & 0x0020) { // STOP
+           channel.enabled = false;
++          dcsr &= ~(0x1 << c); // GX Studio : le bit du canal retombe dans DCSR
++          dcsr_changed = true;
+           LOG_DEBUG("DMA [" << c << "] stop");
+         }
+       }
+@@ -185,11 +190,11 @@ void asic_dma_cycle() {
+     // TODO: cleaner way to modify back the register value here ...
+     {
+       word addr = 0x6C00 + (c << 2);
+-      *(membank_write[addr >> 14] + (addr & 0x3fff)) = static_cast<byte>(channel.source_address & 0xFF);
++      pbRegisterPage[(addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */ = static_cast<byte>(channel.source_address & 0xFF);
+       addr++;
+-      *(membank_write[addr >> 14] + (addr & 0x3fff)) = static_cast<byte>((channel.source_address & 0xFF00) >> 8);
++      pbRegisterPage[(addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */ = static_cast<byte>((channel.source_address & 0xFF00) >> 8);
+       addr++;
+-      *(membank_write[addr >> 14] + (addr & 0x3fff)) = channel.prescaler;
++      pbRegisterPage[(addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */ = channel.prescaler;
+       if (channel.enabled) {
+         dcsr |= (0x1 << c);
+         dcsr_changed = true;
+@@ -204,7 +209,7 @@ void asic_dma_cycle() {
+   // Run RAM test of testplus.cpr when touching this (this is not a guarantee that this is correct but at least it's a guarantee that it's less wrong ! cf issue #40)
+   if (dcsr_changed)
+   {
+-    *(membank_write[dcsr_addr >> 14] + (dcsr_addr & 0x3fff)) = dcsr;
++    pbRegisterPage[(dcsr_addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */ = dcsr;
+   }
+ }
+ 
+@@ -437,7 +442,7 @@ bool asic_register_page_write(word addr, byte val) {
+       LOG_DEBUG("Received DMA control register: " << std::hex << static_cast<int>(val) << std::dec);
+       // TODO: Factorized DCSR maintenance logic in a dedicated function.
+       word dcsr_addr = 0x6C0F;
+-      byte dcsr = *(membank_write[dcsr_addr >> 14] + (dcsr_addr & 0x3fff));
++      byte dcsr = pbRegisterPage[(dcsr_addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */;
+       for (int c = 0; c < NB_DMA_CHANNELS; c++) {
+         asic.dma.ch[c].enabled = (val & (0x1 << c));
+         if (asic.dma.ch[c].enabled) {
+@@ -453,7 +458,7 @@ bool asic_register_page_write(word addr, byte val) {
+         }
+         LOG_DEBUG("DMA channel " << c << (asic.dma.ch[c].enabled ? " enabled" : " disabled"))
+       }
+-      *(membank_write[dcsr_addr >> 14] + (dcsr_addr & 0x3fff)) = dcsr;
++      pbRegisterPage[(dcsr_addr) & 0x3fff] /* GX Studio : registre de l ASIC, meme page fermee */ = dcsr;
+       return false;
+    } else {
+       LOG_DEBUG("Received unused write at " << std::hex << addr << " - val: " << static_cast<int>(val) << std::dec);
+@@ -494,51 +499,44 @@ static inline void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
+    }
+ }
+ 
+-// TODO: all this could be replaced by pre-computed SDL sprites
++// Per-scanline snapshot of the sprite registers and sprite palette, so that
++// sprites repositioned during the frame (multiplexing) are rendered correctly.
++struct spr_snap { int16_t x[16], y[16]; short mx[16], my[16]; Uint32 pal[16]; };
++static spr_snap g_snap[320];
++void asic_snapshot_line(int l) {
++  if (l < 0 || l >= 320) return;
++  spr_snap &s = g_snap[l];
++  for (int i = 0; i < 16; i++) { s.x[i] = asic.sprites_x[i]; s.y[i] = asic.sprites_y[i]; s.mx[i] = asic.sprites_mag_x[i]; s.my[i] = asic.sprites_mag_y[i]; s.pal[i] = GateArray.palette[16 + i]; }
++}
+ void asic_draw_sprites() {
+-   // TODO: this should be affected by other CRTC.registers (reg2 for borderWidth ?, reg1 for screenWidth ? reg6 for screenHeight ?)
++   // Sprite X is relative to the start of the display (HCC), not moved by the
++   // extended border (which only masks the first 16 mode-2 pixels) - checked on a real GX4000.
+    const int borderWidth = 64 + (asic.extend_border ? 16 : 0);
+    const int borderHeight = 40 + 8*(30 - CRTC.registers[7]);
+-   const int screenWidth = 640 + borderWidth;
+-   const int screenHeight = 200 + borderHeight;
+-   // For each sprite
+-   for(int i = 15; i >= 0; i--) {
+-      int sx = asic.sprites_x[i];
+-      int mx = asic.sprites_mag_x[i];
+-      // If some part of the sprite is visible (horizontal check)
+-      if(mx > 0 && (sx + 64*mx) >= borderWidth && sx <= screenWidth) {
+-         int sy = asic.sprites_y[i];
+-         int my = asic.sprites_mag_y[i];
+-         // If some part of the sprite is visible (vertical check)
+-         if(my > 0 && (sy + 64*my) >= borderHeight && sy <= screenHeight) {
+-            sx += borderWidth;
+-            sy += borderHeight;
+-            // For each column of the sprite
+-            for(int x = 0; x < 16; x++) {
+-               if(sx + (x*mx) <= borderWidth) {
+-                  continue;
+-               }
+-               if(sx + (x*mx) >= screenWidth) {
+-                  break;
+-               }
+-               // For each line of the sprite
+-               for(int y = 0; y < 16; y++) {
+-                  if(sy + (y*my) <= borderHeight) {
+-                     continue;
+-                  }
+-                  if(sy + (y*my) >= screenHeight) {
+-                     break;
+-                  }
+-                  // Draw pixel
+-                  byte p = asic.sprites[i][x][y];
+-                  if(p) {
+-                     Uint32 pixel = GateArray.palette[p];
+-                     for(int dx = 0; dx < mx; dx++) {
+-                        for(int dy = 0; dy < my * static_cast<int>(dwXScale); dy++) {
+-                           putpixel(back_surface, (sx+(x*mx)+dx) * dwXScale / 2, (sy+(y*my)) * dwXScale + dy, pixel);
+-                        }
+-                     }
+-                  }
++   const int screenWidth = 640 + 64;
++   for (int L = 0; L < 232; L++) {
++      int sl = L < 320 ? L : 319;
++      const spr_snap &s = g_snap[sl];
++      for (int i = 15; i >= 0; i--) {
++         int mx = s.mx[i], my = s.my[i];
++         if (!mx || !my) continue;
++         int sy = s.y[i];
++         if (L < sy || L >= sy + 16 * my) continue;
++         int row = (L - sy) / my;
++         int sx = s.x[i] + 64;
++         for (int x = 0; x < 16; x++) {
++            int px = sx + x * mx;
++            if (px + mx <= borderWidth) continue;
++            if (px >= screenWidth) break;
++            byte p = asic.sprites[i][x][row];
++            if (!p) continue;
++            Uint32 pixel = s.pal[p - 16 < 16 ? (p - 16) : 0];
++            for (int dx = 0; dx < mx; dx++) {
++               if (px + dx < borderWidth) continue;
++               for (int dy = 0; dy < static_cast<int>(dwXScale); dy++) {
++                  int X = (px + dx) * dwXScale / 2, Y = (borderHeight + L) * dwXScale + dy;
++                  if (X < 0 || Y < 0 || X >= back_surface->w || Y >= back_surface->h) continue;   // hors de la surface (sprite sous l'ecran)
++                  putpixel(back_surface, X, Y, pixel);
+                }
+             }
+          }
+diff --git a/src/cap32.cpp b/src/cap32.cpp
+index 4604bab..f2022a7 100644
+--- a/src/cap32.cpp
++++ b/src/cap32.cpp
+@@ -89,6 +89,11 @@ SDL_Surface *back_surface = nullptr;
+ video_plugin* vid_plugin;
+ SDL_Joystick* joysticks[MAX_NB_JOYSTICKS];
+ std::list<DevTools> devtools;
++void gxdebug_init(int port);
++void gxdebug_poll();
++bool gxdebug_after_exec(int exitCondition);
++bool gxdebug_connected();
++void gxdebug_frame_done();
+ 
+ dword dwTicks, dwTicksOffset, dwTicksTarget, dwTicksTargetFPS;
+ dword dwFPS, dwFrameCount;
+@@ -522,6 +527,12 @@ void z80_OUT_handler (reg_pair port, byte val)
+                GateArray.ink_values[GateArray.pen] = colour;
+                GateArray.palette[GateArray.pen] = SDL_MapRGB(back_surface->format,
+                      colours[colour].r, colours[colour].g, colours[colour].b);
++               { // GX Studio : sur CPC+, l'encre ecrite par le Gate Array remplace la couleur
++                 // ASIC de cette encre (une seule palette dans la machine) : une ecriture ASIC
++                 // ulterieure sur une autre encre ne doit pas la ramener a une ancienne valeur.
++                 extern void asic_ga_ink_written(int pen);
++                 asic_ga_ink_written(GateArray.pen);
++               }
+                if (GateArray.pen < 2) {
+                   byte r = (static_cast<dword>(colours[GateArray.ink_values[0]].r) + static_cast<dword>(colours[GateArray.ink_values[1]].r)) >> 1;
+                   byte g = (static_cast<dword>(colours[GateArray.ink_values[0]].g) + static_cast<dword>(colours[GateArray.ink_values[1]].g)) >> 1;
+@@ -1804,7 +1815,7 @@ void loadConfiguration (t_CPC &CPC, const std::string& configFilename)
+    CPC.ram_size = conf.getIntValue("system", "ram_size", 128) & 0x02c0; // 128KB RAM
+    if (CPC.ram_size > 576) {
+       CPC.ram_size = 576;
+-   } else if ((CPC.model >= 2) && (CPC.ram_size < 128)) {
++   } else if ((CPC.model == 2) && (CPC.ram_size < 128)) { // 6128 : 128 Ko mini ; 6128+ en 64 Ko = GX4000
+       CPC.ram_size = 128; // minimum RAM size for CPC 6128 is 128KB
+    }
+    CPC.speed = conf.getIntValue("system", "speed", DEF_SPEED_SETTING); // original CPC speed
+@@ -1829,6 +1840,7 @@ void loadConfiguration (t_CPC &CPC, const std::string& configFilename)
+ 
+    CPC.devtools_scale = conf.getIntValue("devtools", "scale", 1);
+    CPC.devtools_max_stack_size = conf.getIntValue("devtools", "max_stack_size", 50);
++   CPC.gx_server_port = conf.getIntValue("devtools", "server_port", 0);
+ 
+    CPC.scr_scale = conf.getIntValue("video", "scr_scale", 2);
+    CPC.scr_preserve_aspect_ratio = conf.getIntValue("video", "scr_preserve_aspect_ratio", 1);
+@@ -2816,6 +2828,7 @@ int cap32_main (int argc, char **argv)
+    audio_resume();
+ 
+    loadBreakpoints();
++   gxdebug_init(CPC.gx_server_port);
+ 
+    iExitCondition = EC_FRAME_COMPLETE;
+ 
+@@ -2856,6 +2869,7 @@ int cap32_main (int argc, char **argv)
+          virtualKeyboardEvents.pop_front();
+       }
+ 
++      gxdebug_poll();
+       if (!devtools.empty()) {
+         devtools.remove_if([](DevTools& d) { return !d.IsActive(); });
+         // Ensure execution is resumed when all devtools are closed
+@@ -3231,6 +3245,7 @@ int cap32_main (int argc, char **argv)
+          CPC.scr_pos = CPC.scr_base + dwOffset; // update current rendering position
+ 
+          iExitCondition = z80_execute(); // run the emulation until an exit condition is met
++         if (gxdebug_after_exec(iExitCondition)) continue;
+ 
+          if (iExitCondition == EC_BREAKPOINT) {
+             if (z80.breakpoint_reached || z80.watchpoint_reached) {
+@@ -3267,6 +3282,7 @@ int cap32_main (int argc, char **argv)
+                print(static_cast<byte *>(back_surface->pixels) + CPC.scr_line_offs, chStr, true); // display the frames per second counter
+             }
+             asic_draw_sprites();
++            gxdebug_frame_done();
+             video_display(); // update PC display
+             if (take_screenshot) {
+               dumpScreen();
+diff --git a/src/cap32.h b/src/cap32.h
+index e66e69f..8f04231 100644
+--- a/src/cap32.h
++++ b/src/cap32.h
+@@ -250,6 +250,7 @@ class t_CPC {
+ 
+    int devtools_scale;
+    unsigned int devtools_max_stack_size;
++   int gx_server_port;
+ 
+    unsigned int snd_enabled;
+    bool snd_ready;
+diff --git a/src/crtc.cpp b/src/crtc.cpp
+index ed16e38..1bc906f 100644
+--- a/src/crtc.cpp
++++ b/src/crtc.cpp
+@@ -1,3 +1,4 @@
++#include <cstdlib>
+ /* Caprice32 - Amstrad CPC Emulator
+    (c) Copyright 1997-2004 Ulrich Doewich
+ 
+@@ -673,13 +674,16 @@ inline void match_hsw()
+          }
+          GateArray.sl_count = 0; // clear counter
+       }
+-      if (CRTC.sl_count == CRTC.interrupt_sl && CRTC.interrupt_sl != 0) {
++      static int pri9 = getenv("CAP32_PRI_9BITS") ? 1 : 0; // GX Studio : comparaison sur 9 bits si demandee
++      if (((pri9 ? CRTC.sl_count : (CRTC.sl_count & 0xFF))) == CRTC.interrupt_sl && CRTC.interrupt_sl != 0) { // PRI : 8 bits compares (real ASIC fires at L and L+256)
+          LOG_DEBUG("Firing PRI interrupt at GA.sl_count=" << static_cast<int>(GateArray.sl_count) << ", CRTC.sl_count=" << CRTC.sl_count);
+          z80.int_pending = 1;
+          asic.raster_int_pending = true;
+          // Set the bit for the raster interrupt in DCSR.
+-         word dcsr_addr = 0x6C0F;
+-         *(membank_write[dcsr_addr >> 14] + (dcsr_addr & 0x3fff)) |= 0x80;
++         // GX Studio : le bit est dans la page des registres de l'ASIC, pas dans la RAM
++         // visible en &4000 (sinon un jeu qui laisse la page ASIC fermee voit &6C0F modifie)
++         extern byte *pbRegisterPage;
++         pbRegisterPage[0x2C0F] |= 0x80;
+       }
+       if (GateArray.hs_count) { // delaying on VSYNC?
+          GateArray.hs_count--;
+@@ -888,7 +892,7 @@ void prerender_normal_plus()
+       if (CRTC.raster_count + asic.vscroll <= CRTC.registers[9]) {
+          next_address += asic.vscroll * 0x0800;
+       } else {
+-         next_address += 80;
++         next_address = (next_address & ~0x7FFu) | ((next_address + 2 * CRTC.registers[1]) & 0x7FFu); // GX Studio : MA + R1, boucle sur 2 Ko
+          next_address -= ((CRTC.registers[9] + 1 - asic.vscroll) * 0x0800);
+       }
+    }
+@@ -941,7 +945,7 @@ void prerender_normal_half_plus()
+       if (CRTC.raster_count + asic.vscroll <= CRTC.registers[9]) {
+          next_address += asic.vscroll * 0x0800;
+       } else {
+-         next_address += 80;
++         next_address = (next_address & ~0x7FFu) | ((next_address + 2 * CRTC.registers[1]) & 0x7FFu); // GX Studio : MA + R1, boucle sur 2 Ko
+          next_address -= ((CRTC.registers[9] + 1 - asic.vscroll) * 0x0800);
+       }
+    }
+@@ -1330,6 +1334,7 @@ void crtc_cycle(int repeat_count)
+          }
+          CRTC.addr = CRTC.next_addr;
+          CRTC.sl_count++;
++         { extern void asic_snapshot_line(int); asic_snapshot_line(CRTC.sl_count); }
+ 
+          if (CRTC.flag_invsync) { // VSYNC active?
+             CRTC.vsw_count++; // update counter
+diff --git a/src/gxdebug.cpp b/src/gxdebug.cpp
+new file mode 100644
+index 0000000..6f774bf
+--- /dev/null
++++ b/src/gxdebug.cpp
+@@ -0,0 +1,334 @@
++// GX Studio : petit serveur de debogage pour Caprice32.
++//
++// Active par l'option de configuration  devtools.server_port=<port>  (0 = desactive),
++// par exemple :  cap32 -O devtools.server_port=6543 jeu.dsk
++// Ecoute sur 127.0.0.1 uniquement, un seul client a la fois, protocole texte
++// (une commande par ligne, reponses et evenements une ligne chacun) :
++//
++//   hello                     -> OK gxdebug 1
++//   pause | cont              -> STOP pause ... / OK
++//   step                      -> une instruction           -> STOP step  (+ REGS)
++//   over                      -> instruction ou CALL/RST entier -> STOP step
++//   out                       -> jusqu'au RET de la routine -> STOP step
++//   regs                      -> REGS PC=xxxx SP=xxxx AF=... (registres Z80)
++//   mem <adr> <n>             -> MEM <adr> <octets hexa>   (memoire vue par le Z80)
++//   ram <adr> <n>             -> MEM ... (RAM physique : l'ecran meme sous la ROM haute)
++//   psg                       -> PSG r0 r1 ... r15 (registres du PSG)
++//   poke <adr> <octets hexa>  -> OK
++//   bp add <adr> | bp del <adr> | bp clear | bp list -> OK / BP adr adr ...
++//   shot <fichier.png>        -> OK (capture de l'ecran emule)
++//   key <ligne> <bit> <0|1>   -> OK (matrice clavier : 9/6 = manette 1)
++//   quit                      -> ferme l'emulateur
++// Evenement : "STOP <raison> PC=xxxx" quand l'execution s'arrete (raison :
++// bp, step, pause, watch), suivi d'une ligne REGS.
++// Tant qu'un client est connecte, un point d'arret ne pause que l'emulation
++// (la fenetre DevTools ne s'ouvre pas) ; si le client se deconnecte,
++// l'emulation reprend.
++
++#include <algorithm>
++#include <cstdio>
++#include <cstring>
++#include <string>
++#include <sstream>
++#include <vector>
++
++// Sockets : POSIX (Linux, macOS) ou Winsock (Windows, MinGW / MSYS2)
++#ifdef _WIN32
++#ifndef WIN32_LEAN_AND_MEAN
++#define WIN32_LEAN_AND_MEAN
++#endif
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <winsock2.h>
++#include <ws2tcpip.h>
++typedef SOCKET gx_socket;
++#define GX_NO_SOCKET INVALID_SOCKET
++#define GX_NOSIGNAL 0
++static void gx_close(gx_socket s) { closesocket(s); }
++static void gx_nonblock(gx_socket s) { u_long one = 1; ioctlsocket(s, FIONBIO, &one); }
++#else
++#include <arpa/inet.h>
++#include <fcntl.h>
++#include <netinet/in.h>
++#include <sys/socket.h>
++#include <unistd.h>
++typedef int gx_socket;
++#define GX_NO_SOCKET (-1)
++#ifdef MSG_NOSIGNAL
++#define GX_NOSIGNAL MSG_NOSIGNAL
++#else
++#define GX_NOSIGNAL 0                   // macOS : pas de MSG_NOSIGNAL
++#endif
++static void gx_close(gx_socket s) { ::close(s); }
++static void gx_nonblock(gx_socket s) { fcntl(s, F_SETFL, O_NONBLOCK); }
++#endif
++
++#include "SDL.h"
++#include "cap32.h"
++#include "z80.h"
++#include "z80_disassembly.h"
++#include "log.h"
++
++extern t_CPC CPC;
++extern t_z80regs z80;
++extern byte keyboard_matrix[16];
++extern byte *pbRAM;
++extern std::vector<Breakpoint> breakpoints;
++extern SDL_Surface *back_surface;
++#include "savepng.h"
++
++static gx_socket g_listen = GX_NO_SOCKET, g_client = GX_NO_SOCKET;
++static std::string g_in;
++static bool g_stopped = false;         // arret demande par le debogueur
++static std::string g_shot;             // capture demandee (faite a la fin de l'image)
++
++bool gxdebug_connected() { return g_client != GX_NO_SOCKET; }
++
++static void send_line(const std::string& s) {
++  if (g_client == GX_NO_SOCKET) return;
++  std::string l = s + "\n";
++  const char* p = l.c_str();
++  size_t n = l.size();
++  while (n > 0) {
++    int w = ::send(g_client, p, static_cast<int>(n), GX_NOSIGNAL);
++    if (w <= 0) { gx_close(g_client); g_client = GX_NO_SOCKET; return; }
++    p += w; n -= w;
++  }
++}
++
++static std::string hex4(unsigned v) { char b[8]; snprintf(b, sizeof b, "%04X", v & 0xFFFF); return b; }
++static std::string hex2(unsigned v) { char b[4]; snprintf(b, sizeof b, "%02X", v & 0xFF); return b; }
++
++static std::string regs_line() {
++  std::ostringstream o;
++  o << "REGS PC=" << hex4(z80.PC.w.l) << " SP=" << hex4(z80.SP.w.l)
++    << " AF=" << hex4(z80.AF.w.l) << " BC=" << hex4(z80.BC.w.l)
++    << " DE=" << hex4(z80.DE.w.l) << " HL=" << hex4(z80.HL.w.l)
++    << " IX=" << hex4(z80.IX.w.l) << " IY=" << hex4(z80.IY.w.l)
++    << " AF'=" << hex4(z80.AFx.w.l) << " BC'=" << hex4(z80.BCx.w.l)
++    << " DE'=" << hex4(z80.DEx.w.l) << " HL'=" << hex4(z80.HLx.w.l)
++    << " I=" << hex2(z80.I) << " R=" << hex2((z80.R & 0x7F) | (z80.Rb7 & 0x80))
++    << " IM=" << int(z80.IM) << " IFF1=" << (z80.IFF1 ? 1 : 0) << " IFF2=" << (z80.IFF2 ? 1 : 0);
++  return o.str();
++}
++
++static void remove_ephemeral() {
++  breakpoints.erase(std::remove_if(breakpoints.begin(), breakpoints.end(),
++                    [](const Breakpoint& b) { return b.type & EPHEMERAL; }), breakpoints.end());
++}
++
++extern int z80_bp_skip;
++static void stop(const char* reason) {
++  z80_bp_skip = 1;                      // a la reprise, l'instruction de PC s'execute
++  g_stopped = true;
++  CPC.paused = true;
++  z80.step_in = 0;
++  z80.step_out = 0;
++  remove_ephemeral();
++  send_line(std::string("STOP ") + reason + " PC=" + hex4(z80.PC.w.l));
++  send_line(regs_line());
++}
++
++static void resume() {
++  g_stopped = false;
++  CPC.paused = false;
++}
++
++static unsigned parse_num(const std::string& s) {
++  std::string t = s;
++  int base = 16;
++  if (!t.empty() && (t[0] == '#' || t[0] == '&' || t[0] == '$')) t = t.substr(1);
++  else if (t.size() > 2 && t[0] == '0' && (t[1] == 'x' || t[1] == 'X')) t = t.substr(2);
++  return static_cast<unsigned>(strtoul(t.c_str(), nullptr, base));
++}
++
++static void command(const std::string& line) {
++  std::istringstream in(line);
++  std::string c;
++  in >> c;
++  if (c.empty()) return;
++  if (c == "hello") send_line("OK gxdebug 1");
++  else if (c == "pause") stop("pause");
++  else if (c == "cont") { remove_ephemeral(); resume(); send_line("OK"); }
++  else if (c == "step") { z80.step_in = 1; resume(); }
++  else if (c == "over") {
++    std::vector<dword> eps;
++    DisassembledCode code;
++    auto cur = disassemble_one(z80.PC.w.l, code, eps);
++    const std::string& ins = cur.instruction_;
++    bool call = ins.rfind("call", 0) == 0 || ins.rfind("rst", 0) == 0
++             || ins.rfind("ldir", 0) == 0 || ins.rfind("lddr", 0) == 0
++             || ins.rfind("cpir", 0) == 0 || ins.rfind("cpdr", 0) == 0
++             || ins.rfind("inir", 0) == 0 || ins.rfind("otir", 0) == 0
++             || ins.rfind("indr", 0) == 0 || ins.rfind("otdr", 0) == 0
++             || ins.rfind("djnz", 0) == 0 || ins.rfind("halt", 0) == 0;
++    if (call) breakpoints.emplace_back(static_cast<word>(z80.PC.w.l + cur.Size()), EPHEMERAL);
++    else z80.step_in = 1;
++    resume();
++  }
++  else if (c == "out") { z80.step_out = 1; z80.step_out_addresses.clear(); resume(); }
++  else if (c == "regs") send_line(regs_line());
++  else if (c == "mem") {
++    std::string a, n;
++    in >> a >> n;
++    unsigned adr = parse_num(a), len = n.empty() ? 16 : strtoul(n.c_str(), nullptr, 10);
++    if (len > 4096) len = 4096;
++    std::string out = "MEM " + hex4(adr) + " ";
++    for (unsigned i = 0; i < len; i++) out += hex2(z80_read_mem(static_cast<word>(adr + i)));
++    send_line(out);
++  }
++  else if (c == "ram") {                 // ram <adr> <n> : RAM physique (64 premiers Ko), ex. l'ecran
++    std::string a, n;                     // quand la ROM haute masque &C000 en lecture
++    in >> a >> n;
++    unsigned adr = parse_num(a), len = n.empty() ? 16 : strtoul(n.c_str(), nullptr, 10);
++    if (len > 4096) len = 4096;
++    std::string out = "MEM " + hex4(adr) + " ";
++    for (unsigned i = 0; i < len; i++) out += hex2(pbRAM[(adr + i) & 0xFFFF]);
++    send_line(out);
++  }
++  else if (c == "psg") {                 // registres du PSG (son)
++    extern t_PSG PSG;
++    std::string out = "PSG";
++    for (int i = 0; i < 16; i++) out += " " + hex2(PSG.RegisterAY.Index[i]);
++    send_line(out);
++  }
++  else if (c == "poke") {
++    std::string a, h;
++    in >> a >> h;
++    unsigned adr = parse_num(a);
++    for (size_t i = 0; i + 1 < h.size(); i += 2)
++      z80_write_mem(static_cast<word>(adr + i / 2), static_cast<byte>(strtoul(h.substr(i, 2).c_str(), nullptr, 16)));
++    send_line("OK");
++  }
++  else if (c == "bp") {
++    std::string op, a;
++    in >> op >> a;
++    if (op == "add") {
++      word adr = static_cast<word>(parse_num(a));
++      if (std::none_of(breakpoints.begin(), breakpoints.end(), [&](const Breakpoint& b) { return b.address == adr && b.type == NORMAL; }))
++        breakpoints.emplace_back(adr);
++      send_line("OK");
++    } else if (op == "del") {
++      word adr = static_cast<word>(parse_num(a));
++      breakpoints.erase(std::remove_if(breakpoints.begin(), breakpoints.end(),
++                        [&](const Breakpoint& b) { return b.address == adr && b.type == NORMAL; }), breakpoints.end());
++      send_line("OK");
++    } else if (op == "clear") {
++      breakpoints.erase(std::remove_if(breakpoints.begin(), breakpoints.end(),
++                        [](const Breakpoint& b) { return b.type == NORMAL; }), breakpoints.end());
++      send_line("OK");
++    } else {
++      std::string out = "BP";
++      for (auto& b : breakpoints) if (b.type == NORMAL) out += " " + hex4(b.address);
++      send_line(out);
++    }
++  }
++  else if (c == "shot") {             // capture a la fin de l'image (sprites compris)
++    std::string f;
++    std::getline(in, f);
++    f.erase(0, f.find_first_not_of(' '));
++    if (CPC.paused) send_line(SDL_SavePNG(back_surface, f) == 0 ? "OK" : "ERR shot");
++    else g_shot = f;
++  }
++  else if (c == "key") {                 // key <ligne> <bit> <1=appuye|0> : clavier / manette
++    int r = -1, b = -1, v = 0;
++    in >> r >> b >> v;
++    if (r >= 0 && r < 16 && b >= 0 && b < 8) {
++      if (v) keyboard_matrix[r] &= ~(1 << b); else keyboard_matrix[r] |= (1 << b);
++      send_line("OK");
++    } else send_line("ERR key");
++  }
++  else if (c == "prof") {                // prof on|off|clear|save <fichier> : cycles (T-states) executes par adresse
++    extern unsigned int g_prof[65536]; extern int g_prof_on;
++    std::string op, f; in >> op; std::getline(in, f); f.erase(0, f.find_first_not_of(' '));
++    if (op == "on") g_prof_on = 1;
++    else if (op == "off") g_prof_on = 0;
++    else if (op == "clear") memset(g_prof, 0, sizeof(g_prof));
++    else if (op == "save") {
++      FILE *o = fopen(f.c_str(), "wb");
++      if (!o) { send_line("ERR prof"); return; }
++      fwrite(g_prof, sizeof(g_prof[0]), 65536, o);
++      fclose(o);
++    } else { send_line("ERR prof"); return; }
++    send_line("OK");
++  }
++  else if (c == "quit") { send_line("OK"); cleanExit(0, false); }
++  else send_line("ERR commande inconnue : " + c);
++}
++
++void gxdebug_init(int port) {
++  if (port <= 0) return;
++#ifdef _WIN32
++  WSADATA wsa;
++  if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return;
++#endif
++  g_listen = ::socket(AF_INET, SOCK_STREAM, 0);
++  if (g_listen == GX_NO_SOCKET) return;
++  int one = 1;
++  setsockopt(g_listen, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&one), sizeof one);
++  sockaddr_in a{};
++  a.sin_family = AF_INET;
++  a.sin_port = htons(static_cast<uint16_t>(port));
++  a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
++  if (::bind(g_listen, reinterpret_cast<sockaddr*>(&a), sizeof a) < 0 || ::listen(g_listen, 1) < 0) {
++    LOG_ERROR("gxdebug : port " << port << " indisponible");
++    gx_close(g_listen);
++    g_listen = GX_NO_SOCKET;
++    return;
++  }
++  gx_nonblock(g_listen);
++  LOG_INFO("gxdebug : serveur de debogage sur 127.0.0.1:" << port);
++  fprintf(stderr, "GXDEBUG %d\n", port);
++}
++
++// A appeler a chaque tour de la boucle principale (en pause ou non).
++void gxdebug_poll() {
++  if (g_listen == GX_NO_SOCKET) return;
++  if (g_client == GX_NO_SOCKET) {
++    gx_socket c = ::accept(g_listen, nullptr, nullptr);
++    if (c != GX_NO_SOCKET) {
++      gx_nonblock(c);
++      g_client = c;
++      g_in.clear();
++    }
++  }
++  if (g_client != GX_NO_SOCKET) {
++    char buf[1024];
++    for (;;) {
++      int n = ::recv(g_client, buf, sizeof buf, 0);
++      if (n > 0) { g_in.append(buf, n); continue; }
++      if (n == 0) { gx_close(g_client); g_client = GX_NO_SOCKET; resume(); }   // client parti : on repart
++      break;
++    }
++    size_t p;
++    while (g_client != GX_NO_SOCKET && (p = g_in.find('\n')) != std::string::npos) {
++      std::string l = g_in.substr(0, p);
++      g_in.erase(0, p + 1);
++      if (!l.empty() && l.back() == '\r') l.pop_back();
++      command(l);
++    }
++  }
++  if (g_stopped) CPC.paused = true;      // la pause automatique (focus) ne relance pas
++}
++
++// Apres z80_execute : true si l'arret a ete pris en charge par le debogueur.
++bool gxdebug_after_exec(int exitCondition) {
++  if (g_client == GX_NO_SOCKET || exitCondition != EC_BREAKPOINT) return false;
++  if (z80.watchpoint_reached) { stop("watch"); return true; }
++  if (z80.breakpoint_reached) {
++    bool eph = std::any_of(breakpoints.begin(), breakpoints.end(),
++                           [](const Breakpoint& b) { return (b.type & EPHEMERAL) && b.address == z80.PC.w.l; });
++    stop(eph ? "step" : "bp");
++    return true;
++  }
++  if (z80.step_in > 1) { stop("step"); return true; }
++  return false;
++}
++
++// Fin d'une image (sprites dessines) : capture demandee par "shot".
++void gxdebug_frame_done() {
++  if (g_shot.empty()) return;
++  send_line(SDL_SavePNG(back_surface, g_shot) == 0 ? "OK" : "ERR shot");
++  g_shot.clear();
++}
+diff --git a/src/z80.cpp b/src/z80.cpp
+index badb9b1..712e55a 100644
+--- a/src/z80.cpp
++++ b/src/z80.cpp
+@@ -161,8 +161,10 @@ enum EDcodes {
+ 
+ t_z80regs z80;
+ std::vector<Breakpoint> breakpoints;
++int z80_bp_skip = 0;            // GX Studio : voir z80_execute
+ std::vector<Watchpoint> watchpoints;
+ int iCycleCount, iWSAdjust;
++unsigned int g_prof[65536]; int g_prof_on = 0;   // GX Studio : profil (cycles executes par adresse)
+ static byte SZ[256]; // zero and sign flags
+ static byte SZ_BIT[256]; // zero, sign and parity/overflow (=zero) flags for BIT opcode
+ static byte SZP[256]; // zero, sign and parity flags
+@@ -1064,7 +1066,16 @@ int z80_execute()
+          }
+       }
+ 
+-      z80_execute_instruction();
++      // GX Studio : point d'arret teste AVANT l'instruction (avant, il l'etait apres,
++      // et une fin d'image juste avant l'adresse le faisait sauter) ; z80_bp_skip :
++      // reprise apres un arret, l'instruction de l'adresse d'arret s'execute
++      if (!breakpoints.empty()) {
++        if (z80_bp_skip) z80_bp_skip = 0;
++        else if ((z80.breakpoint_reached = std::any_of(breakpoints.begin(), breakpoints.end(), [&](const auto& b) { return b.address == _PC; }))) break;
++      } else z80_bp_skip = 0;
++      { word pc0 = _PC;                 // GX Studio : profil (cycles par adresse d'instruction)
++        z80_execute_instruction();
++        if (g_prof_on) g_prof[pc0] += iCycleCount; }
+ 
+       z80_wait_states
+ 
+@@ -1096,9 +1107,6 @@ int z80_execute()
+ 
+       // TODO: Measure impact. If important, create templated version of
+       // z80_execute, read_mem, write_mem ...
+-      if (!breakpoints.empty()) {
+-        if ((z80.breakpoint_reached = std::any_of(breakpoints.begin(), breakpoints.end(), [&](const auto& b) { return b.address == _PC; }))) break;
+-      }
+       if (z80.watchpoint_reached) break;
+       if (z80.step_in) { z80.step_in++; break; }
+ 

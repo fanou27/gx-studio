@@ -1,0 +1,16 @@
+; explosion : canal 2, bruit sur la voie C
+canal 2
+vitesse 0
+NOISE 10
+VOL C 15
+PAUSE 600
+NOISE 16
+VOL C 12
+PAUSE 600
+NOISE 22
+VOL C 8
+PAUSE 900
+NOISE 31
+VOL C 4
+PAUSE 900
+VOL C 0

@@ -1,0 +1,7 @@
+# GX Studio - projet
+name=Demo Decor
+target=CPC
+ram=64
+mode=0
+main=src/main.asm
+defines=

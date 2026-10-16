@@ -1,0 +1,12 @@
+; brique cassee : deux notes aigues rapides, canal 1, voie B
+canal 1
+vitesse 0
+TONE B 60
+VOL B 14
+PAUSE 500
+TONE B 45
+VOL B 11
+PAUSE 600
+VOL B 6
+PAUSE 400
+VOL B 0

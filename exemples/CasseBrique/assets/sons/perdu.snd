@@ -1,0 +1,16 @@
+; balle perdue : note qui descend + bruit, canal 2, voie C
+canal 2
+vitesse 0
+NOISE 12
+VOL C 15
+PAUSE 3000
+NOISE 20
+VOL C 12
+PAUSE 3000
+NOISE 28
+VOL C 9
+PAUSE 4000
+NOISE 31
+VOL C 5
+PAUSE 4000
+VOL C 0

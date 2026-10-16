@@ -1,0 +1,11 @@
+; musique du titre : canal DMA 0, voies A et B
+canal 0
+vitesse 51          ; 1 tic = 52 lignes (1/6 d'image)
+duree 36            ; une croche = 36 tics
+boucle
+volume A 12
+relache A 8
+volume B 10
+relache B 6
+A: E5 G5 A5 C6 B5 A5 G5 E5 D5 E5 G5 A5 G5*2 - -
+B: A2*2 A3*2 F2*2 F3*2 G2*2 G3*2 E2*2 E3*2

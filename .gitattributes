@@ -1,0 +1,8 @@
+# fins de ligne : LF pour les scripts Linux, CRLF pour Windows
+*.sh    text eol=lf
+*.bat   text eol=crlf
+*.patch text eol=lf
+*.jar   binary
+*.png   binary
+*.pdf   binary
+*.cpr   binary

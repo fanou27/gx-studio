@@ -1,0 +1,13 @@
+# compilation du studio
+out/
+target/
+*.class
+# fichiers produits par la compilation des projets (PAS src/.../build : c'est du code)
+exemples/**/build/
+# rasm et Caprice32 construits par construire-outils.sh
+outils/
+# divers
+*.log
+*~
+.idea/
+.vscode/

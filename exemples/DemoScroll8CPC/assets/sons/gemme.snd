@@ -1,0 +1,13 @@
+; bruitage du tir : canal 1, voie B, diviseur 0 (1 tic = 1 ligne)
+canal 1
+vitesse 0
+TONE B 60
+VOL B 13
+PAUSE 300
+TONE B 90
+VOL B 10
+PAUSE 300
+TONE B 130
+VOL B 6
+PAUSE 300
+VOL B 0
