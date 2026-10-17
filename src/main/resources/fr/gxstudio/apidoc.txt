@@ -1,0 +1,482 @@
+# GX Studio - documentation de l'API C (lib/c/gx.h) pour la completion et l'aide
+# (c) 2026 ALONSO Stephane [Fanou]
+#
+# Format : un bloc par symbole, commence par "== nom".
+#   sig:    signature affichee (et liste des parametres)
+#   cible:  all | plus (CPC+ / GX4000) | cpc (CPC classique)
+#   @param  nom description
+#   @return description
+#   @ex     exemple (une ligne, peut etre repete)
+#   @see    symboles lies
+#   les autres lignes forment le resume.
+
+== gx_init
+sig: void gx_init(void)
+cible: all
+Prépare la bibliothèque : son, sprites (matériels sur CPC+ / GX4000, logiciels sur CPC). À appeler une fois, au début de main().
+@ex gx_init();
+@see gx_palette, gx_clear_screen
+
+== gx_wait_frame
+sig: void gx_wait_frame(void)
+cible: all
+Attend la fin de l'image en cours (CPC+ : ligne 199 ; CPC : synchro verticale). Rythme la boucle du jeu à 50 images par seconde.
+@ex while (1) { gx_wait_frame(); gx_sprites_update(); gx_read_joy(); /* ... */ }
+@see gx_wait_frames, gx_sprites_update
+
+== gx_wait_frames
+sig: void gx_wait_frames(uint8_t n)
+cible: all
+Attend n fins d'image (50 = une seconde).
+@param n nombre d'images à attendre (1-255)
+@ex gx_wait_frames(100);   /* 2 secondes */
+@see gx_wait_frame
+
+== gx_read_joy
+sig: void gx_read_joy(void)
+cible: all
+Lit les manettes 1 et 2 (et, sur CPC / CPC+, les flèches, ESPACE et COPY du clavier). Met à jour joy (boutons appuyés) et joy_new (nouveaux appuis depuis la lecture précédente). Une fois par image.
+@ex gx_read_joy();
+@ex if (joy & JOY_LEFT) x--;
+@ex if (joy_new & JOY_FIRE) tirer();
+@see joy, joy_new, JOY_UP
+
+== joy
+sig: extern volatile uint8_t joy
+cible: all
+Boutons actuellement appuyés (manettes 1 + 2), mis à jour par gx_read_joy(). Tester avec les masques JOY_UP, JOY_DOWN, JOY_LEFT, JOY_RIGHT, JOY_FIRE1, JOY_FIRE2, JOY_FIRE.
+@ex if (joy & JOY_RIGHT) x++;
+@see joy_new, gx_read_joy
+
+== joy_new
+sig: extern volatile uint8_t joy_new
+cible: all
+Boutons qui viennent d'être appuyés (front montant) depuis le gx_read_joy() précédent : pratique pour un tir ou un menu (un appui = une action).
+@ex if (joy_new & JOY_FIRE1) pause = !pause;
+@see joy, gx_read_joy
+
+== frame_count
+sig: extern volatile uint8_t frame_count
+cible: all
+Compteur incrémenté à chaque image (50 par seconde), revient à 0 après 255. Pratique pour les clignotements et les animations simples.
+@ex if (frame_count & 16) gx_text(8, 100, "APPUYEZ SUR FEU");
+
+== JOY_UP
+sig: #define JOY_UP (1 << J_UP)
+cible: all
+Masques des boutons dans joy et joy_new : JOY_UP, JOY_DOWN, JOY_LEFT, JOY_RIGHT, JOY_FIRE1, JOY_FIRE2 et JOY_FIRE (l'un des deux boutons de tir). J_UP... J_FIRE2 sont les numéros de bits.
+@see joy, joy_new
+
+== gx_clear_screen
+sig: void gx_clear_screen(void)
+cible: all
+Efface tout l'écran (&C000-&FFFF à zéro : encre 0).
+@see gx_clear_lines
+
+== gx_palette
+sig: void gx_palette(const void *pal)
+cible: all
+Applique une palette d'écran. CPC+ / GX4000 : 16 couleurs &0GRB (mode 0) ou 4 (mode 1) ; CPC : 16 couleurs firmware (0-26). Le bord prend l'encre 0.
+@param pal palette produite par le studio : pal_screen (assets/palettes/ecran.pal)
+@ex gx_palette(pal_screen);
+@see gx_sprite_palette, GX_ASIC_PAL
+
+== gx_sprite_palette
+sig: void gx_sprite_palette(const void *pal)
+cible: plus
+Applique les 15 couleurs des sprites matériels (couleurs 1-15 ; 0 = transparent). Sans effet sur CPC (les sprites logiciels utilisent les encres de l'écran).
+@param pal palette des sprites : pal_sprites (assets/palettes/sprites.pal)
+@ex gx_sprite_palette(pal_sprites);
+@see gx_palette, GX_ASIC_SPR_PAL
+
+== gx_ink
+sig: void gx_ink(uint8_t ink)
+cible: all
+Choisit l'encre du texte affiché ensuite par gx_text() et gx_text_num().
+@param ink numéro d'encre (mode 0 : 0-15, mode 1 : 0-3)
+@ex gx_ink(3); gx_text(0, 0, "SCORE");
+@see gx_text
+
+== gx_text
+sig: void gx_text(uint8_t col, uint8_t line, const char *s)
+cible: all
+Affiche une chaîne avec la police du studio, dans l'encre choisie par gx_ink(). Caractères ASCII 32-127.
+@param col colonne en caractères (mode 0 : 0-19, mode 1 : 0-39)
+@param line ligne de l'écran en pixels (0-199, en général multiple de 8)
+@param s chaîne terminée par 0
+@ex gx_text(10, 96, "GAME OVER");
+@see gx_ink, gx_text_num, GX_COLS
+
+== gx_text_num
+sig: void gx_text_num(uint8_t col, uint8_t line, uint16_t value, uint8_t digits)
+cible: all
+Affiche un nombre sur un nombre fixe de chiffres, complété par des zéros à gauche (score, vies...).
+@param col colonne en caractères
+@param line ligne de l'écran (0-199)
+@param value nombre à afficher (0-65535)
+@param digits nombre de chiffres (1-5)
+@ex gx_text_num(34, 0, score, 5);   /* 00120 */
+@see gx_text
+
+== gx_clear_lines
+sig: void gx_clear_lines(uint8_t y, uint8_t n)
+cible: all
+Efface n lignes de l'écran (toute la largeur) à partir de la ligne y.
+@param y première ligne (0-199)
+@param n nombre de lignes
+@ex gx_clear_lines(0, 8);   /* efface la ligne de texte du haut */
+@see gx_clear_screen
+
+== gx_blit
+sig: void gx_blit(const void *src, uint8_t wbytes, uint8_t h, uint8_t xbyte, uint8_t y)
+cible: all
+Copie une image importée (Projet > Importer une image PNG) à l'écran, ligne par ligne. Sur CPC+ / GX4000 l'image est lue dans la page de données de la cartouche.
+@param src données de l'image : IMG_NOM
+@param wbytes largeur en octets : IMG_NOM_W
+@param h hauteur en lignes : IMG_NOM_H
+@param xbyte position x en octets (mode 0 : 2 pixels par octet, mode 1 : 4)
+@param y ligne de destination (0-199)
+@ex gx_blit(IMG_TITRE, IMG_TITRE_W, IMG_TITRE_H, 0, 0);
+
+== GX_LINE
+sig: #define GX_LINE(y) ((uint8_t *)line_addr[y])
+cible: all
+Adresse en mémoire écran du début de la ligne y (0-199), pour dessiner soi-même. Une ligne fait 80 octets.
+@param y ligne de l'écran (0-199)
+@ex GX_LINE(100)[40] = 0xFF;
+@see line_addr
+
+== GX_COLS
+sig: #define GX_COLS
+cible: all
+Nombre de colonnes de texte du mode de l'écran : 20 (mode 0), 40 (mode 1) ou 80 (mode 2).
+@ex gx_text((GX_COLS - 9) / 2, 96, "GAME OVER");   /* centre */
+
+== gx_sound
+sig: void gx_sound(uint8_t ch, uint16_t ofs, uint8_t speed)
+cible: all
+Joue un son ou une musique de assets/sons sur un canal. Plutôt que de donner les trois valeurs, utiliser la macro GX_SOUND(NOM). CPC+ / GX4000 : son DMA de l'ASIC ; CPC : lecteur logiciel sous interruption.
+@param ch canal (0-2) : NOM_CH
+@param ofs position du son dans les listes : NOM_OFS
+@param speed diviseur de vitesse : NOM_SPEED
+@ex GX_SOUND(REBOND);
+@see GX_SOUND, gx_sound_stop, gx_sound_tempo
+
+== GX_SOUND
+sig: #define GX_SOUND(N) gx_sound(N##_CH, N##_OFS, N##_SPEED)
+cible: all
+Joue le son assets/sons/N.snd sur son canal, avec sa vitesse : remplace gx_sound(N_CH, N_OFS, N_SPEED).
+@param N nom du son en majuscules (fichier MUSIQUE.snd -> MUSIQUE)
+@ex GX_SOUND(MUSIQUE);
+@see gx_sound
+
+== gx_sound_stop
+sig: void gx_sound_stop(uint8_t ch)
+cible: all
+Arrête le son du canal ch.
+@param ch canal (0-2), par exemple MUSIQUE_CH
+@ex gx_sound_stop(MUSIQUE_CH);
+@see gx_sound_stop_all
+
+== gx_sound_stop_all
+sig: void gx_sound_stop_all(void)
+cible: all
+Arrête les trois canaux et coupe le son.
+@see gx_sound_stop
+
+== gx_psg
+sig: void gx_psg(uint8_t reg, uint8_t value)
+cible: all
+Écrit directement dans un registre du PSG (AY-3-8912) : effets sonores faits à la main.
+@param reg registre (0-13 : 0-5 périodes, 6 bruit, 7 mixage, 8-10 volumes, 11-13 enveloppe)
+@param value valeur à écrire
+@ex gx_psg(8, 15);   /* volume max du canal A */
+
+== gx_sound_tempo
+sig: void gx_sound_tempo(uint8_t speed)
+cible: all
+Change la vitesse du son en cours sur le canal 0 (la musique), sans le relancer : accélérer la musique quand le temps presse.
+@param speed nouveau diviseur (plus petit = plus rapide)
+@ex gx_sound_tempo(MUSIQUE_SPEED - 10);
+
+== gx_sprite
+sig: void gx_sprite(uint8_t n, uint16_t x, uint8_t y, uint8_t frame)
+cible: all
+Place un sprite, sur toutes les cibles : sprite matériel sur CPC+ / GX4000 (zoom adapté au mode), sprite logiciel sur CPC. Prend effet au prochain gx_sprites_update().
+@param n numéro du sprite (CPC+ : 0-15 ; CPC : emplacement)
+@param x position en pixels du mode de l'écran (mode 0 : 0-159, mode 1 : 0-319)
+@param y ligne (0-199)
+@param frame image du sprite : F_NOM (éditeur de sprites)
+@ex gx_sprite(0, x, y, F_VAISSEAU);
+@see gx_sprite_hide, gx_sprites_update, gx_spr_set
+
+== gx_sprite_hide
+sig: void gx_sprite_hide(uint8_t n)
+cible: all
+Cache le sprite n (au prochain gx_sprites_update()).
+@param n numéro du sprite
+@see gx_sprite
+
+== gx_sprites_update
+sig: void gx_sprites_update(void)
+cible: all
+Applique les positions et images demandées depuis l'image précédente. Une fois par image, juste après gx_wait_frame(). CPC+ : recopie dans l'ASIC et charge les nouvelles images (4 au plus par appel) ; CPC : efface puis redessine les sprites logiciels.
+@ex gx_wait_frame(); gx_sprites_update();
+@see gx_sprite, gx_wait_frame
+
+== gx_spr_set
+sig: void gx_spr_set(uint8_t n, int16_t x, int16_t y, uint8_t frame, uint8_t zoom)
+cible: plus
+Place un sprite matériel de l'ASIC avec son zoom. x en pixels mode 2 quel que soit le mode de l'écran ; y signé : un sprite peut sortir par le haut. Prend effet au prochain gx_spr_update().
+@param n numéro du sprite (0-15)
+@param x position en pixels mode 2 (0-639 visible)
+@param y ligne (0-199 visible, négatif = au-dessus)
+@param frame image : F_NOM
+@param zoom ZOOM_X1Y1, ZOOM_X2Y1, ZOOM_X4Y1, ZOOM_X2Y2, ZOOM_X4Y2, ZOOM_X4Y4
+@ex gx_spr_set(0, x * 2, y, F_VAISSEAU, ZOOM_X2Y1);
+@see gx_spr_hide, gx_spr_update, ZOOM_X1Y1
+
+== ZOOM_X1Y1
+sig: #define ZOOM_X1Y1 0x05
+cible: plus
+Zooms des sprites matériels pour gx_spr_set() : ZOOM_X1Y1 (pixels mode 2), ZOOM_X2Y1 (pixels mode 1), ZOOM_X4Y1 (pixels mode 0), ZOOM_X2Y2, ZOOM_X4Y2, ZOOM_X4Y4 (sprite agrandi).
+@see gx_spr_set
+
+== gx_spr_hide
+sig: void gx_spr_hide(uint8_t n)
+cible: plus
+Cache le sprite matériel n.
+@param n numéro du sprite (0-15)
+@see gx_spr_hide_all
+
+== gx_spr_hide_all
+sig: void gx_spr_hide_all(void)
+cible: plus
+Cache les 16 sprites matériels, tout de suite.
+@see gx_spr_hide
+
+== gx_spr_update
+sig: void gx_spr_update(void)
+cible: plus
+Identique à gx_sprites_update() : recopie les 16 sprites dans l'ASIC et charge les images qui ont changé (4 au plus par image).
+@see gx_spr_update_from, gx_sprites_update
+
+== gx_spr_update_from
+sig: void gx_spr_update_from(uint8_t first)
+cible: plus
+Comme gx_spr_update(), mais ne recopie que les sprites first à 15 : les sprites inférieurs sont repositionnés par des bandes raster (multiplexage, plus de 16 sprites à l'écran).
+@param first premier sprite recopié par la bibliothèque (0-15)
+@ex gx_spr_update_from(6);   /* 0-5 : bandes raster */
+@see RASTER_BAND_ENTRY, GX_BAND_SIZE
+
+== gx_raster_start
+sig: void gx_raster_start(const void *table)
+cible: plus
+Démarre tout de suite une table raster (changements de couleurs ligne par ligne, interruptions PRI de l'ASIC).
+@param table RASTER_NOM (éditeur de rasters) ou table écrite en C avec RASTER_INK_ENTRY...
+@ex gx_raster_start(RASTER_CIEL);
+@see gx_raster_queue, raster_idle
+
+== gx_raster_queue
+sig: void gx_raster_queue(const void *table)
+cible: plus
+Programme une table raster qui sera utilisée à partir de l'image suivante (double tampon : on prépare une table pendant que l'autre s'affiche).
+@param table table raster à utiliser à la prochaine image
+@see gx_raster_start
+
+== RASTER_INK_ENTRY
+sig: #define RASTER_INK_ENTRY(color, next)
+cible: plus
+Entrée de table raster écrite en C : change la couleur de l'encre 3, puis attend la ligne next. Une table commence par sa première ligne et finit par RASTER_END_ENTRY.
+@param color couleur &0GRB (12 bits)
+@param next ligne de l'entrée suivante
+@ex const unsigned char ciel[] = { 10, RASTER_INK_ENTRY(0x00F, 20), RASTER_INK_ENTRY(0x05F, 199), RASTER_END_ENTRY };
+@see RASTER_ANY_ENTRY, RASTER_END_ENTRY, gx_raster_start
+
+== RASTER_ANY_ENTRY
+sig: #define RASTER_ANY_ENTRY(ink, color, next)
+cible: plus
+Entrée de table raster : change la couleur d'une encre quelconque, puis attend la ligne next.
+@param ink encre (0-15)
+@param color couleur &0GRB
+@param next ligne de l'entrée suivante
+@see RASTER_INK_ENTRY
+
+== RASTER_END_ENTRY
+sig: #define RASTER_END_ENTRY
+cible: plus
+Fin d'une table raster : fin d'image (ligne 199) puis réarmement pour l'image suivante. Dernière entrée obligatoire.
+@see RASTER_INK_ENTRY
+
+== RASTER_BAND_ENTRY
+sig: #define RASTER_BAND_ENTRY(addr, next)
+cible: plus
+Entrée de table raster qui repositionne les sprites 0-5 (multiplexage) à partir d'un bloc de GX_BAND_SIZE octets, puis attend la ligne next.
+@param addr adresse du bloc de la bande (6 x X lo, X hi, Y lo, Y hi, zoom, puis couleurs 1-4)
+@param next ligne de l'entrée suivante
+@see GX_BAND_SIZE, gx_spr_update_from
+
+== GX_BAND_SIZE
+sig: #define GX_BAND_SIZE 38
+cible: plus
+Taille d'un bloc de bande raster : 6 sprites x 5 octets (X lo, X hi, Y lo, Y hi, zoom) puis les couleurs 1-4 des sprites.
+@see RASTER_BAND_ENTRY
+
+== raster_idle
+sig: extern const unsigned char raster_idle[]
+cible: plus
+Table raster vide : arrête les effets raster.
+@ex gx_raster_start(raster_idle);
+
+== spr_want
+sig: extern uint8_t spr_want[16]
+cible: plus
+Image voulue pour chacun des 16 sprites matériels ; chargée dans l'ASIC par gx_spr_update() quand elle change.
+
+== GX_ASIC_PAL
+sig: #define GX_ASIC_PAL ((volatile uint16_t *)0x6400)
+cible: plus
+Registres des encres 0-15 de l'écran dans l'ASIC (couleurs &0GRB, 12 bits). Écrire dedans change la couleur tout de suite.
+@ex GX_ASIC_PAL[0] = 0x00F;   /* fond bleu */
+@see GX_ASIC_SPR_PAL, gx_palette
+
+== GX_ASIC_SPR_PAL
+sig: #define GX_ASIC_SPR_PAL ((volatile uint16_t *)0x6422)
+cible: plus
+Registres des couleurs 1-15 des sprites matériels : GX_ASIC_SPR_PAL[0] est la couleur 1.
+@ex GX_ASIC_SPR_PAL[0] = 0xFFF;
+@see GX_ASIC_PAL, gx_sprite_palette
+
+== gx_sw_set
+sig: void gx_sw_set(uint8_t slot, uint8_t xbyte, uint8_t y, uint8_t frame)
+cible: cpc
+Place un sprite logiciel (CPC classique). Le décor sous le sprite est sauvegardé puis restauré par gx_sw_update().
+@param slot emplacement du sprite
+@param xbyte position x en octets (mode 0 : 2 pixels par octet)
+@param y ligne (0-199)
+@param frame image : F_NOM
+@see gx_sw_hide, gx_sw_update, gx_sprite
+
+== gx_sw_hide
+sig: void gx_sw_hide(uint8_t slot)
+cible: cpc
+Cache le sprite logiciel de l'emplacement slot.
+@param slot emplacement du sprite
+@see gx_sw_set
+
+== gx_sw_update
+sig: void gx_sw_update(void)
+cible: cpc
+Efface les sprites logiciels (dans l'ordre inverse) puis les redessine à leurs nouvelles positions. Une fois par image, après gx_wait_frame().
+@see gx_sw_set, gx_sprites_update
+
+== gx_tiles_use
+sig: void gx_tiles_use(const void *gfx, uint8_t width, uint8_t height)
+cible: all
+Choisit le jeu de tuiles utilisé par gx_tile_draw() et gx_map_draw().
+@param gfx graphismes : TILES_NOM (éditeur de tuiles)
+@param width largeur d'une tuile en octets : TILES_NOM_W
+@param height hauteur d'une tuile en lignes : TILES_NOM_H
+@ex gx_tiles_use(TILES_DECOR, TILES_DECOR_W, TILES_DECOR_H);
+@see gx_map_draw, gx_tile_draw
+
+== gx_tile_draw
+sig: void gx_tile_draw(uint8_t tile, uint8_t col, uint8_t line)
+cible: all
+Dessine une tuile à l'écran.
+@param tile numéro de la tuile
+@param col colonne en octets
+@param line ligne de l'écran (0-199)
+@see gx_tiles_use
+
+== gx_map_origin
+sig: void gx_map_origin(uint8_t col, uint8_t line)
+cible: all
+Position à l'écran du coin haut gauche de la carte dessinée par gx_map_draw().
+@param col colonne en octets
+@param line ligne de l'écran
+@ex gx_map_origin(0, 16);
+@see gx_map_draw
+
+== gx_map_draw
+sig: void gx_map_draw(const void *cell, uint8_t map_w, uint8_t cols, uint8_t rows)
+cible: all
+Dessine une partie de carte (éditeur de décors) à partir de gx_map_origin(), avec le jeu de tuiles de gx_tiles_use().
+@param cell première case à dessiner : MAP_NOM + y * MAP_NOM_W + x
+@param map_w largeur de la carte en cases : MAP_NOM_W
+@param cols nombre de colonnes à dessiner
+@param rows nombre de rangées à dessiner
+@ex gx_map_draw(MAP_NIVEAU1, MAP_NIVEAU1_W, 20, 12);
+@see gx_tiles_use, gx_map_origin, gx_map_get
+
+== gx_map_get
+sig: uint8_t gx_map_get(const void *map, uint8_t map_w, uint8_t x, uint8_t y)
+cible: all
+Lit le numéro de tuile d'une case de la carte (collisions, objets).
+@param map carte : MAP_NOM
+@param map_w largeur de la carte en cases : MAP_NOM_W
+@param x colonne de la case
+@param y rangée de la case
+@return numéro de la tuile
+@ex t = gx_map_get(MAP_NIVEAU1, MAP_NIVEAU1_W, px / 8, py / 16);
+@see gx_tile_solid
+
+== gx_tile_solid
+sig: uint8_t gx_tile_solid(uint8_t tile, const void *flags)
+cible: all
+Indique si une tuile est solide (case « solide » cochée dans l'éditeur de tuiles).
+@param tile numéro de la tuile (par exemple renvoyé par gx_map_get)
+@param flags table des propriétés : TFLAGS_NOM
+@return 1 si la tuile est solide, 0 sinon
+@ex if (gx_tile_solid(gx_map_get(MAP_N1, MAP_N1_W, cx, cy), TFLAGS_DECOR)) bloque();
+@see gx_map_get
+
+== gx_anim_t
+sig: typedef struct { uint8_t s[5]; } gx_anim_t
+cible: all
+État d'une animation en cours (5 octets) : une variable par objet animé.
+@ex gx_anim_t marche;
+@see gx_anim_start, gx_anim_step
+
+== gx_anim_start
+sig: void gx_anim_start(gx_anim_t *state, const void *anim)
+cible: all
+Démarre une animation (éditeur d'animations) dans une variable d'état.
+@param state état de l'animation (variable gx_anim_t)
+@param anim animation : ANIM_NOM
+@ex gx_anim_start(&marche, ANIM_MARCHE);
+@see gx_anim_step
+
+== gx_anim_step
+sig: uint8_t gx_anim_step(gx_anim_t *state)
+cible: all
+Fait avancer l'animation d'une image ; à appeler à chaque image.
+@param state état de l'animation
+@return image à afficher (F_...), à donner à gx_sprite()
+@ex gx_sprite(0, x, y, gx_anim_step(&marche));
+@see gx_anim_start
+
+== gx_rand
+sig: uint8_t gx_rand(void)
+cible: all
+Nombre pseudo-aléatoire 0-255 (registre à décalage 16 bits mélangé au compteur d'images).
+@return nombre de 0 à 255
+@ex x = gx_rand() % 150;
+
+== line_addr
+sig: extern const unsigned int line_addr[]
+cible: all
+Adresse en mémoire écran du début de chacune des 200 lignes (build/gen.h).
+@see GX_LINE
+
+== pal_screen
+sig: extern const unsigned char pal_screen[]
+cible: all
+Palette de l'écran (assets/palettes/ecran.pal), pour gx_palette().
+@see gx_palette
+
+== pal_sprites
+sig: extern const unsigned char pal_sprites[]
+cible: all
+Palette des sprites matériels (assets/palettes/sprites.pal), pour gx_sprite_palette(). Sur CPC : pointeur nul.
+@see gx_sprite_palette

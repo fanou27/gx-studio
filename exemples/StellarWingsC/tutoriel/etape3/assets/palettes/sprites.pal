@@ -1,0 +1,17 @@
+; GX Studio - palette (indice, couleur #RGB sur 4 bits) : couleurs 1-15 des sprites materiels (0 = transparent)
+0 #000
+1 #FD3
+2 #FFF
+3 #F62
+4 #F62
+5 #F44
+6 #FFA
+7 #FA2
+8 #FA2
+9 #ACF
+10 #E33
+11 #FC2
+12 #FFF
+13 #6FF
+14 #F80
+15 #FF6

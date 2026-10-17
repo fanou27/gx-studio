@@ -1,0 +1,32 @@
+.root { -fx-font-size: 13px; }
+.asm, .asm .text { -fx-font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; -fx-font-size: 13px; }
+.asm { -fx-background-color: #1e1f29; }
+.asm .text { -fx-fill: #e6e6e6; }
+.asm .caret { -fx-stroke: #ffffff; }
+.asm .selection { -fx-fill: #44475a; }
+.asm .comment { -fx-fill: #7f8fa6; }
+.asm .string { -fx-fill: #f1fa8c; }
+.asm .label { -fx-fill: #50fa7b; -fx-font-weight: bold; }
+.asm .keyword { -fx-fill: #8be9fd; }
+.asm .directive { -fx-fill: #ff79c6; }
+.asm .number { -fx-fill: #ffb86c; }
+.asm .lineno { -fx-text-fill: #6c7086; -fx-font-family: "DejaVu Sans Mono", monospace; }
+.asm .gutter { -fx-background-color: #262733; -fx-padding: 0 6 0 4; }
+.asm .paragraph-box:has-caret { -fx-background-color: #2a2c3a; }
+.console { -fx-font-family: "DejaVu Sans Mono", monospace; -fx-font-size: 12px; }
+.problem-error { -fx-text-fill: #c1121f; }
+.problem-warning { -fx-text-fill: #b5651d; }
+.target-box { -fx-padding: 0 6 0 6; -fx-border-color: #bbb; -fx-border-radius: 4; }
+.asm .match { -rtfx-background-color: #8a6d1f; }
+.search-hit { -fx-font-family: "DejaVu Sans Mono", monospace; }
+
+/* debogage : ligne ou le programme est arrete */
+.asm .pcline { -fx-background-color: #5c4d00; }
+.pc-arrow { -fx-text-fill: #ffd60a; -fx-font-weight: bold; }
+.debug-panel { -fx-padding: 4; }
+.debug-panel .reg-name { -fx-font-family: "Monospaced"; -fx-text-fill: #555; }
+.debug-panel .reg-value { -fx-font-family: "Monospaced"; -fx-font-weight: bold; }
+.debug-panel .reg-changed { -fx-text-fill: #d62828; }
+.debug-panel .mono { -fx-font-family: "Monospaced"; -fx-font-size: 12px; }
+.debug-state-run { -fx-text-fill: #2b9348; -fx-font-weight: bold; }
+.debug-state-stop { -fx-text-fill: #d62828; -fx-font-weight: bold; }

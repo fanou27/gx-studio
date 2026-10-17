@@ -1,0 +1,105 @@
+Caprice32 pour GX Studio : correctif de fidelite CPC+ / GX4000 et debogueur
+=========================================================================
+(version GX Studio 0.5.2, correctif 0.5.2)
+
+Le Caprice32 d'origine differe de la vraie console sur trois points qui
+genent les jeux CPC+ / GX4000 (verifies sur une vraie GX4000) :
+
+1. Interruptions raster (registre PRI) : le correctif compare 8 bits du
+   numero de ligne (une valeur p declenche aux lignes p ET p+256) ; le
+   Caprice32 d'origine compare le numero complet (9 bits). Les machines ne
+   sont pas toutes d'accord sur ce point : depuis la 0.4.2, la bibliotheque
+   de GX Studio mesure le comportement au demarrage (pri_detect) et marche
+   dans les deux cas. Pour essayer un jeu en mode 9 bits avec ce Caprice32 :
+       CAP32_PRI_9BITS=1 ./cap32 jeu.cpr
+2. Sprites materiels : Caprice32 les dessinait une seule fois par image, avec
+   leur derniere position. Un sprite repositionne pendant l'image
+   (multiplexage, ex. la formation de STELLAR WINGS) n'apparaissait qu'une
+   fois. Le correctif memorise les registres a chaque ligne.
+3. GX4000 = 6128+ avec 64 Ko : Caprice32 imposait 128 Ko au modele 3.
+
+Ajouts de la version 0.4 :
+
+4. Soft-scroll vertical de l'ASIC : la rangee suivante est lue a l'adresse
+   MA + R1 en bouclant sur le bloc de 2 Ko (comme le CRTC), et non 80 octets
+   plus loin : necessaire au defilement 8 directions (lib/common/scroll8.asm).
+5. Un sprite place sous le bas de l'ecran pouvait faire planter Caprice32
+   avec le correctif 0.3 (dessin hors de l'image) : corrige.
+6. Serveur de debogage pour GX Studio (src/gxdebug.cpp) : avec l'option
+       -O devtools.server_port=6543
+   Caprice32 ecoute sur 127.0.0.1:6543 (un seul client). GX Studio s'y relie
+   tout seul au lancement (F5) : ligne courante dans l'editeur, pas a pas,
+   registres, memoire, points d'arret poses pendant l'execution.
+   Protocole texte, une commande par ligne :
+       hello | pause | cont | step | over | out | regs
+       mem <adr> <n> | ram <adr> <n> | poke <adr> <octets hexa>
+       bp add <adr> | bp del <adr> | bp clear | bp list
+       shot <fichier.png> | key <ligne> <bit> <0|1> | quit
+       prof on | prof off | prof clear | prof save <fichier>   (0.5.1)
+   Evenement a chaque arret : "STOP <bp|step|pause|watch> PC=xxxx" puis
+   une ligne "REGS PC=... SP=... AF=...". Sans l'option, rien ne change.
+
+Ajouts de la version 0.4.1 (mis au jour par l'adaptation Sorcery GX, son DMA) :
+
+7. DMA : les adresses, diviseurs et l'etat (DCSR) mis a jour par les canaux
+   etaient recopies dans la RAM en &6C00-&6C0F (meme page ASIC fermee),
+   ecrasant le programme ou les donnees a ces adresses : ils vont maintenant
+   dans les registres de l'ASIC seulement.
+8. Le bit 7 de DCSR (interruption raster) est pose dans les registres de
+   l'ASIC (et non dans la RAM).
+9. Instruction LOOP : le compteur de REPEAT diminue a chaque tour (la boucle
+   etait infinie) ; instruction STOP : le bit du canal retombe dans DCSR.
+
+Ajout de la version 0.5.1 :
+
+10. Profil d'execution (src/z80.cpp, commande "prof") : Caprice32 compte les
+    instructions executees a chaque adresse ; "prof save" ecrit 65536
+    entiers de 32 bits. GX Studio en tire le rapport de l'onglet Profil
+    (Debogage > Mesurer les performances).
+11. Points d'arret testes AVANT l'instruction (src/z80.cpp) : Caprice32 les
+    testait apres chaque instruction, mais sortait de sa boucle a chaque fin
+    d'image avant ce test ; l'instruction suivante s'executait alors sans
+    test, et un point d'arret pouvait etre manque (rarement, mais un test
+    automatique tour par tour le voyait). A la reprise apres un arret,
+    l'instruction de l'adresse d'arret s'execute (z80_bp_skip).
+
+Ajout du correctif 0.5.2 :
+
+12. Windows : le serveur de debogage (src/gxdebug.cpp) utilise Winsock sous
+    Windows (MinGW / MSYS2) et les sockets POSIX ailleurs ; le correctif
+    precedent ne se compilait que sous Linux et macOS. Rien ne change pour
+    Linux.
+
+Installation automatique (recommandee) :
+
+    Linux / macOS : ./construire-outils.sh -d        (dans le dossier de GX Studio)
+    Windows       : construire-outils.bat            (MSYS2, installe par winget si absent)
+
+    Le script clone rasm et Caprice32, se place sur les versions testees,
+    applique ce correctif, compile, et affiche les chemins pour
+    Outils > Reglages. Il peut etre relance (mise a jour du correctif).
+    Note Windows : rasm y est compile avec -lws2_32 (il utilise Winsock).
+
+Installation a la main (Linux) :
+
+    sudo apt install build-essential libsdl2-dev libfreetype-dev zlib1g-dev libpng-dev
+    git clone https://github.com/ColinPitrat/caprice32.git
+    cd caprice32
+    git checkout 6c12c4c          # version sur laquelle le correctif a ete fait
+    git apply /chemin/vers/gxstudio-caprice32.patch
+    make -j4
+
+Mise a jour depuis un correctif precedent (0.3, 0.4 ou 0.4.2, deja applique) :
+
+    cd caprice32
+    git checkout -- src           # retire l'ancien correctif
+    rm -f src/gxdebug.cpp         # (fichier ajoute par le correctif 0.4)
+    git apply /chemin/vers/gxstudio-caprice32.patch
+    make -j4
+    ./cap32 --help
+
+Puis dans GX Studio : Outils > Reglages > Caprice32 = chemin de ./cap32.
+
+GX Studio lance Caprice32 depuis son dossier (cap32.cfg et rom/ y sont lus).
+Les outils de Caprice32 restent disponibles : Maj+F2 (registres,
+desassemblage avec les etiquettes du projet, memoire, points d'arret).

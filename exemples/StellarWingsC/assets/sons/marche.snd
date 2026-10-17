@@ -1,0 +1,42 @@
+; marche de la formation (4 notes graves), voie A
+canal 0
+vitesse 32
+; la vitesse (tempo) est changee par le programme : elle accelere quand la formation fond
+REPEAT 4095
+TONE A 568          ; A2
+VOL A 13
+PAUSE 3
+VOL A 10
+PAUSE 3
+VOL A 6
+PAUSE 4
+VOL A 0
+PAUSE 190
+TONE A 638          ; G2
+VOL A 13
+PAUSE 3
+VOL A 10
+PAUSE 3
+VOL A 6
+PAUSE 4
+VOL A 0
+PAUSE 190
+TONE A 716          ; F2
+VOL A 13
+PAUSE 3
+VOL A 10
+PAUSE 3
+VOL A 6
+PAUSE 4
+VOL A 0
+PAUSE 190
+TONE A 758          ; E2
+VOL A 13
+PAUSE 3
+VOL A 10
+PAUSE 3
+VOL A 6
+PAUSE 4
+VOL A 0
+PAUSE 190
+LOOP

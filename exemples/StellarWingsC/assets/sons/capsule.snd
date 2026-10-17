@@ -1,0 +1,22 @@
+; capsule attrapee ou vie bonus : arpege montant
+canal 1
+vitesse 0
+TONE B 119          ; C5
+VOL B 12
+PAUSE 1000
+TONE B 95          ; E5
+VOL B 12
+PAUSE 1000
+TONE B 80          ; G5
+VOL B 12
+PAUSE 1000
+TONE B 60          ; C6
+VOL B 12
+PAUSE 1000
+TONE B 47          ; E6
+VOL B 12
+PAUSE 1000
+TONE B 40          ; G6
+VOL B 12
+PAUSE 1000
+VOL B 0

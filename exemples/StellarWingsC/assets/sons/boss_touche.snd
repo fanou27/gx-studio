@@ -1,0 +1,10 @@
+; vaisseau mere touche
+canal 1
+vitesse 0
+TONE B 40
+VOL B 13
+PAUSE 600
+TONE B 30
+VOL B 9
+PAUSE 600
+VOL B 0

@@ -1,0 +1,17 @@
+; musique de l'ecran titre : melodie (voie A) et basse (voie B)
+canal 0
+vitesse 51
+duree 42
+boucle
+volume A 12
+relache A 8
+volume B 11
+relache B 0
+A: A4 C5 E5 A5 G5 E5 C5 E5 F4 A4 C5 F5 E5 C5 A4 C5
+A: G4 B4 D5 G5 F5 D5 B4 D5 E4 G#4 B4 E5 D5 B4 G#4 B4
+A: A4 C5 E5 A5 B5 C6 B5 A5 F5 E5 D5 C5 B4 C5 D5 E5
+A: G4 B4 D5 G5 A5 G5 F5 D5 E5 D5 C5 B4 A4 - A4 -
+B: A2!b A2!7 A3!b A3!7 A2!b A2!7 A3!b A3!7 F2!b F2!7 F3!b F3!7 F2!b F2!7 F3!b F3!7
+B: G2!b G2!7 G3!b G3!7 G2!b G2!7 G3!b G3!7 E2!b E2!7 E3!b E3!7 E2!b E2!7 E3!b E3!7
+B: A2!b A2!7 A3!b A3!7 A2!b A2!7 A3!b A3!7 F2!b F2!7 F3!b F3!7 F2!b F2!7 F3!b F3!7
+B: G2!b G2!7 G3!b G3!7 G2!b G2!7 G3!b G3!7 E2!b E2!7 E3!b E3!7 A2!b A2!7 - .

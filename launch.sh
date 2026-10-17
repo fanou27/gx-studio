@@ -1,2 +1,2 @@
 #!/bin/sh
-java -jar ./gxstudio-0.5.1.jar
+java -jar ./target/gxstudio-0.5.2.jar

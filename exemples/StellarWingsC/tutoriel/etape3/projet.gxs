@@ -1,0 +1,7 @@
+# GX Studio - projet
+name=Stellar Wings C - etape 3
+target=GX4000
+ram=64
+mode=1
+main=src/main.asm
+defines=STARS_EN_C=1 BANDES_EN_C=1
